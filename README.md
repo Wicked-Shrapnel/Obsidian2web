@@ -3,6 +3,8 @@
 
 ## Overview
 
+Full disclosure this tool was written with Claude
+
 This tool lets you write posts in Obsidian and publish them to your WordPress site with a single hotkey press. It converts your Markdown to HTML, assigns the correct category, and sends it to WordPress via the REST API. If you run the hotkey again on the same note it updates the existing post rather than duplicating it.
 
 ---
