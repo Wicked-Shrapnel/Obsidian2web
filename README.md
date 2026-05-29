@@ -1,6 +1,7 @@
 # Obsidian -> WordPress Publisher — Setup Guide
 
 ## Overview
+Full disclosure this was made with the assistance of claude.
 
 This tool lets you write notes in Obsidian and publish them to your WordPress site with a single hotkey press. It converts your Markdown to HTML, assigns the category, and sends it to WordPress via the REST API. A second hotkey lets you save a post as a draft or revert a live post back to draft. If you run the publish hotkey again on the same note it updates the existing post rather than duplicating it.
 
