@@ -2,21 +2,22 @@
 # -*- coding: utf-8 -*-
 """
 ╔═══════════════════════════════════════════════════════╗
-║         Obsidian -> WordPress Publisher v1.0          ║
-║  Publishes or updates WordPress posts from Obsidian   ║
-║  notes with a single hotkey press.                    ║
+║         Obsidian -> WordPress Publisher v2.0          ║
+║  Publishes, updates, or drafts WordPress posts        ║
+║  from Obsidian notes with a single hotkey press.      ║
 ╚═══════════════════════════════════════════════════════╝
 
 SETUP:
   1. Fill in your credentials in the CONFIG section below.
   2. Save this file somewhere permanent (e.g. C:\Scripts\).
-  3. In Obsidian, install the Shell Commands plugin and bind
-     a hotkey to:
-       python "C:\Scripts\publish_to_wp.py" "{{file_path:absolute}}"
+  3. In Obsidian, install the Shell Commands plugin and bind:
+       Publish hotkey:
+         python "C:\Scripts\publish_to_wp.py" "{{file_path:absolute}}"
+       Draft hotkey:
+         python "C:\Scripts\publish_to_wp.py" "{{file_path:absolute}}" --draft
 
 NOTE TEMPLATE (frontmatter fields):
   ---
-  title: Your Post Title
   category: CategoryName
   excerpt: Short summary shown on post listing pages (optional)
   ---
@@ -24,11 +25,13 @@ NOTE TEMPLATE (frontmatter fields):
   Your content here...
 
 HOW IT WORKS:
-  - First run  -> creates a new published post on WordPress.
-  - Subsequent -> updates the existing post (tracked via wp-id).
+  - Publish hotkey  -> creates a new live post, or updates existing.
+  - Draft hotkey    -> creates a new draft, or reverts existing post to draft.
+  - wp-id is written to frontmatter after first publish/draft so future
+    runs update the correct post instead of creating a duplicate.
   - Categories are created automatically if they don't exist.
   - Date is handled by WordPress, same as writing in Gutenberg.
-  - A Windows notification confirms publish/update success.
+  - A Windows notification confirms every action.
   - UNC paths (\\server\share) are automatically converted to
     mapped drive letters so the script works from Obsidian hotkeys.
 """
@@ -49,16 +52,15 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='repla
 
 # ── CONFIG ─────────────────────────────────────────────────────────────────────
 # Your WordPress site URL — no trailing slash
-WP_URL          = "https://YOUR-SITE.com"
+WP_URL          = "https://bradwheels.tech"
 
 # Your WordPress login username
-WP_USERNAME     = "your_wordpress_username"
+WP_USERNAME     = "wheels"
 
 # Application Password — generate one at:
 # WordPress Dashboard -> Users -> Profile -> Application Passwords
-WP_APP_PASSWORD = "xxxx xxxx xxxx xxxx xxxx xxxx"
+WP_APP_PASSWORD = "6UkC I6ey HIYy fxeP V6bn Dqb8"
 # ───────────────────────────────────────────────────────────────────────────────
-
 
 def notify(title, message):
     """Show a Windows balloon notification in the taskbar."""
@@ -283,20 +285,34 @@ def write_wp_id(note_path, post_id):
         f.write(raw)
 
 
-def publish(note_path):
-    note_path = resolve_path(note_path)
-    note_path = os.path.abspath(note_path)
+def update_status_in_frontmatter(note_path, status):
+    """Update or insert the status field in the note's frontmatter."""
+    with open(note_path, "r", encoding="utf-8") as f:
+        raw = f.read()
 
-    if not os.path.exists(note_path):
-        print(f"ERROR: File not found: {note_path}")
-        sys.exit(1)
+    if raw.startswith("---"):
+        end = raw.find("---", 3)
+        if end != -1:
+            fm_block = raw[3:end]
+            if "status:" in fm_block:
+                # Replace existing status line
+                fm_block = re.sub(r'status:.*', f'status: {status}', fm_block)
+            else:
+                # Insert status before closing ---
+                fm_block = fm_block.rstrip() + f'\nstatus: {status}\n'
+            raw = "---" + fm_block + raw[end:]
 
+    with open(note_path, "w", encoding="utf-8") as f:
+        f.write(raw)
+
+
+def build_post_data(note_path, status):
+    """Parse note and build the WordPress post data payload."""
     with open(note_path, "r", encoding="utf-8") as f:
         content = f.read()
 
     frontmatter, body = parse_frontmatter(content)
 
-    # Use filename as title if not set in frontmatter
     title         = frontmatter.get("title") or os.path.splitext(os.path.basename(note_path))[0]
     category_name = frontmatter.get("category", "").strip()
     excerpt       = frontmatter.get("excerpt", "").strip()
@@ -309,7 +325,7 @@ def publish(note_path):
     post_data = {
         "title":   title,
         "content": html_content,
-        "status":  "publish",
+        "status":  status,
     }
 
     if excerpt:
@@ -319,28 +335,71 @@ def publish(note_path):
         cat_id = get_category_id(category_name)
         post_data["categories"] = [cat_id]
 
-    existing_id = find_existing_post(title)
-    if existing_id:
-        result = wp_request(f"posts/{existing_id}", post_data, method="POST")
-        if isinstance(result, list):
-            result = result[0]
-        notify("WordPress Publisher", f"Updated: {title}")
-    else:
-        result = wp_request("posts", post_data, method="POST")
-        if isinstance(result, list):
-            result = result[0]
-        notify("WordPress Publisher", f"Published: {title}")
+    return post_data, frontmatter, title
 
-    if "wp-id" not in frontmatter:
+
+def run(note_path, draft_mode=False):
+    note_path = resolve_path(note_path)
+    note_path = os.path.abspath(note_path)
+
+    if not os.path.exists(note_path):
+        print(f"ERROR: File not found: {note_path}")
+        sys.exit(1)
+
+    status = "draft" if draft_mode else "publish"
+    post_data, frontmatter, title = build_post_data(note_path, status)
+
+    wp_id = frontmatter.get("wp-id", "").strip()
+
+    if wp_id:
+        # Post already exists — update it with new status
+        result = wp_request(f"posts/{wp_id}", post_data, method="POST")
+        if isinstance(result, list):
+            result = result[0]
+        if draft_mode:
+            notify("WordPress Publisher", f"Reverted to draft: {title}")
+        else:
+            notify("WordPress Publisher", f"Updated: {title}")
+    else:
+        # New post — check by title as fallback, then create
+        existing_id = find_existing_post(title)
+        if existing_id:
+            result = wp_request(f"posts/{existing_id}", post_data, method="POST")
+            if isinstance(result, list):
+                result = result[0]
+            if draft_mode:
+                notify("WordPress Publisher", f"Reverted to draft: {title}")
+            else:
+                notify("WordPress Publisher", f"Updated: {title}")
+        else:
+            result = wp_request("posts", post_data, method="POST")
+            if isinstance(result, list):
+                result = result[0]
+            if draft_mode:
+                notify("WordPress Publisher", f"Saved as draft: {title}")
+            else:
+                notify("WordPress Publisher", f"Published: {title}")
+
+        # Write wp-id back to frontmatter for future runs
         write_wp_id(note_path, result["id"])
+
+    # Always update status field in frontmatter
+    update_status_in_frontmatter(note_path, status)
 
 
 if __name__ == "__main__":
     try:
         if len(sys.argv) < 2:
-            print("Usage: python publish_to_wp.py <path-to-note.md>")
+            print("Usage:")
+            print("  Publish : python publish_to_wp.py <note.md>")
+            print("  Draft   : python publish_to_wp.py <note.md> --draft")
             sys.exit(1)
-        publish(sys.argv[1])
+
+        path       = sys.argv[1]
+        draft_mode = "--draft" in sys.argv
+
+        run(path, draft_mode=draft_mode)
+
     except Exception as e:
         print(f"\nERROR: {e}")
         traceback.print_exc()
