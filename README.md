@@ -44,6 +44,8 @@ Then open Obsidian and make sure your vault is opened via the mapped drive lette
 
 Some hosts disable this feature by default. If you don't see Application Passwords in your WordPress profile, add this line to wp-config.php. Note there might be some slight variation between the naming of this folder based on your web host.
 
+(Make a backup before doing this just to be safe)
+
 ```php
 // Enable Application Passwords for REST API authentication (Obsidian publisher)
 define( 'WP_APPLICATION_PASSWORDS_ENABLED', true );
