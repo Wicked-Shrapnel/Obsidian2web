@@ -1,39 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-╔═══════════════════════════════════════════════════════╗
-║         Obsidian -> WordPress Publisher v2.0          ║
-║  Publishes, updates, or drafts WordPress posts        ║
-║  from Obsidian notes with a single hotkey press.      ║
-╚═══════════════════════════════════════════════════════╝
-
-SETUP:
-  1. Fill in your credentials in the CONFIG section below.
-  2. Save this file somewhere permanent (e.g. C:\Scripts\).
-  3. In Obsidian, install the Shell Commands plugin and bind:
-       Publish hotkey:
-         python "C:\Scripts\publish_to_wp.py" "{{file_path:absolute}}"
-       Draft hotkey:
-         python "C:\Scripts\publish_to_wp.py" "{{file_path:absolute}}" --draft
-
-NOTE TEMPLATE (frontmatter fields):
-  ---
-  category: CategoryName
-  excerpt: Short summary shown on post listing pages (optional)
-  ---
-
-  Your content here...
-
-HOW IT WORKS:
-  - Publish hotkey  -> creates a new live post, or updates existing.
-  - Draft hotkey    -> creates a new draft, or reverts existing post to draft.
-  - wp-id is written to frontmatter after first publish/draft so future
-    runs update the correct post instead of creating a duplicate.
-  - Categories are created automatically if they don't exist.
-  - Date is handled by WordPress, same as writing in Gutenberg.
-  - A Windows notification confirms every action.
-  - UNC paths (\\server\share) are automatically converted to
-    mapped drive letters so the script works from Obsidian hotkeys.
+Obsidian -> WordPress Publisher v2.1
+Publishes, updates, drafts, auto-uploads images, and embeds videos.
 """
 
 import sys
@@ -47,20 +16,16 @@ import urllib.request
 import urllib.error
 import urllib.parse
 import traceback
+import mimetypes
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 # ── CONFIG ─────────────────────────────────────────────────────────────────────
-# Your WordPress site URL — https:// no trailing slash
-WP_URL          = ""
-
-# Your WordPress login username
+WP_URL          = ""   # https://your-site.com — no trailing slash
 WP_USERNAME     = ""
-
-# Application Password — generate one at:
-# WordPress Dashboard -> Users -> Profile -> Application Passwords
 WP_APP_PASSWORD = ""
 # ───────────────────────────────────────────────────────────────────────────────
+
 
 def notify(title, message):
     """Show a Windows balloon notification in the taskbar."""
@@ -74,18 +39,13 @@ def notify(title, message):
             f'[System.Windows.Forms.ToolTipIcon]::None);'
             f'Start-Sleep -Seconds 5; $n.Dispose()'
         )
-        subprocess.Popen(
-            ["powershell", "-WindowStyle", "Hidden", "-Command", script]
-        )
+        subprocess.Popen(["powershell", "-WindowStyle", "Hidden", "-Command", script])
     except Exception:
-        pass  # Notifications are best-effort; never crash the script
+        pass
 
 
 def resolve_path(note_path):
-    """
-    Convert UNC paths (\\server\share\...) to mapped drive paths (Z:\...).
-    Obsidian sometimes passes UNC paths even when the vault is on a mapped drive.
-    """
+    """Convert UNC paths to mapped drive paths."""
     if note_path.startswith("\\\\"):
         result = subprocess.run(["net", "use"], capture_output=True, text=True)
         for line in result.stdout.splitlines():
@@ -98,19 +58,14 @@ def resolve_path(note_path):
                 if part.startswith("\\\\"):
                     unc_share = part.rstrip("\\")
             if drive and unc_share and note_path.lower().startswith(unc_share.lower()):
-                converted = drive + note_path[len(unc_share):]
-                return converted
+                return drive + note_path[len(unc_share):]
     return note_path
 
 
 def parse_frontmatter(content):
-    """
-    Extract YAML frontmatter and body from a Markdown note.
-    Returns (dict of frontmatter values, body string).
-    """
+    """Extract YAML frontmatter and body from a Markdown note."""
     frontmatter = {}
     body = content
-
     if content.startswith("---"):
         end = content.find("---", 3)
         if end != -1:
@@ -119,20 +74,147 @@ def parse_frontmatter(content):
             for line in fm_block.splitlines():
                 if ":" in line:
                     key, _, val = line.partition(":")
-                    frontmatter[key.strip().lower()] = (
-                        val.strip().strip('"').strip("'")
-                    )
-
+                    frontmatter[key.strip().lower()] = val.strip().strip('"').strip("'")
     return frontmatter, body
 
 
+def get_youtube_id(url):
+    """Extract YouTube video ID from a URL."""
+    patterns = [
+        r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/)([A-Za-z0-9_-]{11})',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    return None
+
+
+def get_vimeo_id(url):
+    """Extract Vimeo video ID from a URL."""
+    match = re.search(r'vimeo\.com/(\d+)', url)
+    return match.group(1) if match else None
+
+
+def make_video_embed(url):
+    """Convert a YouTube or Vimeo URL to an iframe embed."""
+    yt_id = get_youtube_id(url)
+    if yt_id:
+        return (
+            f'<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;">'
+            f'<iframe src="https://www.youtube.com/embed/{yt_id}" '
+            f'style="position:absolute;top:0;left:0;width:100%;height:100%;" '
+            f'frameborder="0" allowfullscreen></iframe></div>'
+        )
+    vimeo_id = get_vimeo_id(url)
+    if vimeo_id:
+        return (
+            f'<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;">'
+            f'<iframe src="https://player.vimeo.com/video/{vimeo_id}" '
+            f'style="position:absolute;top:0;left:0;width:100%;height:100%;" '
+            f'frameborder="0" allowfullscreen></iframe></div>'
+        )
+    return None
+
+
+def upload_image(image_path):
+    """Upload a local image to WordPress Media Library; return hosted URL or None."""
+    if not os.path.exists(image_path):
+        print(f"  Warning: image not found: {image_path}")
+        return None
+    mime_type, _ = mimetypes.guess_type(image_path)
+    if not mime_type:
+        mime_type = "application/octet-stream"
+    filename = os.path.basename(image_path)
+    with open(image_path, "rb") as f:
+        image_data = f.read()
+    credentials = f"{WP_USERNAME}:{WP_APP_PASSWORD}"
+    token = base64.b64encode(credentials.encode()).decode()
+    headers = {
+        "Authorization": f"Basic {token}",
+        "Content-Type": mime_type,
+        "Content-Disposition": f'attachment; filename="{filename}"',
+    }
+    req = urllib.request.Request(
+        f"{WP_URL}/wp-json/wp/v2/media",
+        data=image_data, headers=headers, method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req) as resp:
+            result = json.loads(resp.read().decode())
+            hosted_url = result.get("source_url", "")
+            print(f"  Uploaded: {filename} -> {hosted_url}")
+            return hosted_url
+    except urllib.error.HTTPError as e:
+        print(f"  Image upload failed ({e.code}): {e.read().decode()}")
+        return None
+
+
+def process_media(body, vault_root):
+    """
+    Handle all media in the note body:
+    - Obsidian image embeds ![[file.jpg]] -> upload and replace with hosted URL
+    - Standard markdown images ![alt](local/path) -> upload and replace
+    - Already hosted images -> leave untouched
+    - YouTube/Vimeo URLs on their own line -> replace with iframe embed
+    """
+    # Obsidian embed syntax: ![[filename.ext]]
+    def replace_obsidian_embed(match):
+        filename = match.group(1).strip()
+        # Search vault recursively for the file
+        for root, dirs, files in os.walk(vault_root):
+            dirs[:] = [d for d in dirs if not d.startswith('.')]
+            if filename in files:
+                url = upload_image(os.path.join(root, filename))
+                if url:
+                    return f'![{filename}]({url})'
+        print(f"  Warning: could not find image in vault: {filename}")
+        return match.group(0)
+
+    body = re.sub(r'!\[\[([^\]]+)\]\]', replace_obsidian_embed, body)
+
+    # Standard markdown images with local paths: ![alt](path)
+    def replace_markdown_image(match):
+        alt = match.group(1)
+        path = match.group(2).strip()
+        if path.startswith("http://") or path.startswith("https://"):
+            return match.group(0)  # Already hosted — leave alone
+        image_path = os.path.join(vault_root, path) if not os.path.isabs(path) else path
+        url = upload_image(image_path)
+        return f'![{alt}]({url})' if url else match.group(0)
+
+    body = re.sub(r'!\[([^\]]*)\]\(([^)]+)\)', replace_markdown_image, body)
+
+    # Obsidian video embed syntax: ![](url) or ![any text](url)
+    def replace_markdown_video(match):
+        url = match.group(2).strip()
+        embed = make_video_embed(url)
+        return embed if embed else match.group(0)
+
+    body = re.sub(
+        r'!\[([^\]]*)\]\((https?://(?:www\.)?(?:youtube\.com/watch\S+|youtu\.be/\S+|vimeo\.com/\S+))\)',
+        replace_markdown_video,
+        body
+    )
+
+    # Bare video URLs on their own line
+    def replace_video_url(match):
+        url = match.group(1).strip()
+        embed = make_video_embed(url)
+        return embed if embed else match.group(0)
+
+    body = re.sub(
+        r'^(https?://(?:www\.)?(?:youtube\.com/watch\S+|youtu\.be/\S+|vimeo\.com/\S+))\s*$',
+        replace_video_url,
+        body,
+        flags=re.MULTILINE
+    )
+
+    return body
+
+
 def markdown_to_html(md):
-    """
-    Convert Markdown to HTML.
-    Supports: headings, bold, italic, bold+italic, strikethrough,
-    inline code, fenced code blocks, links, images, blockquotes,
-    unordered lists, ordered lists, and horizontal rules.
-    """
+    """Convert Markdown to HTML."""
     lines = md.split("\n")
     html_lines = []
     in_ul = False
@@ -172,55 +254,35 @@ def markdown_to_html(md):
                 code = "\n".join(code_buffer)
                 html_lines.append(f'<pre><code>{code}</code></pre>')
             continue
-
         if in_code_block:
             code_buffer.append(line)
             continue
-
         if re.match(r'^(\*{3,}|-{3,}|_{3,})$', line.strip()):
-            close_lists()
-            html_lines.append("<hr>")
-            continue
-
+            close_lists(); html_lines.append("<hr>"); continue
         heading = re.match(r'^(#{1,6})\s+(.*)', line)
         if heading:
             close_lists()
             level = len(heading.group(1))
             html_lines.append(f"<h{level}>{inline(heading.group(2))}</h{level}>")
             continue
-
         if line.startswith("> "):
             close_lists()
             html_lines.append(f"<blockquote>{inline(line[2:])}</blockquote>")
             continue
-
         ul_match = re.match(r'^[-*+] (.*)', line)
         if ul_match:
-            if in_ol:
-                html_lines.append("</ol>")
-                in_ol = False
-            if not in_ul:
-                html_lines.append("<ul>")
-                in_ul = True
+            if in_ol: html_lines.append("</ol>"); in_ol = False
+            if not in_ul: html_lines.append("<ul>"); in_ul = True
             html_lines.append(f"<li>{inline(ul_match.group(1))}</li>")
             continue
-
         ol_match = re.match(r'^\d+\. (.*)', line)
         if ol_match:
-            if in_ul:
-                html_lines.append("</ul>")
-                in_ul = False
-            if not in_ol:
-                html_lines.append("<ol>")
-                in_ol = True
+            if in_ul: html_lines.append("</ul>"); in_ul = False
+            if not in_ol: html_lines.append("<ol>"); in_ol = True
             html_lines.append(f"<li>{inline(ol_match.group(1))}</li>")
             continue
-
         if line.strip() == "":
-            close_lists()
-            html_lines.append("")
-            continue
-
+            close_lists(); html_lines.append(""); continue
         close_lists()
         html_lines.append(f"<p>{inline(line)}</p>")
 
@@ -250,9 +312,7 @@ def wp_request(endpoint, data=None, method="GET"):
 
 def get_category_id(category_name):
     """Look up a category by name; create it if it doesn't exist."""
-    cats = wp_request(
-        f"categories?search={urllib.parse.quote(category_name)}&per_page=10"
-    )
+    cats = wp_request(f"categories?search={urllib.parse.quote(category_name)}&per_page=10")
     if isinstance(cats, list):
         for cat in cats:
             if cat["name"].lower() == category_name.lower():
@@ -265,9 +325,7 @@ def get_category_id(category_name):
 
 def find_existing_post(title):
     """Search for an existing post by title; return its ID or None."""
-    results = wp_request(
-        f"posts?search={urllib.parse.quote(title)}&per_page=10&status=any"
-    )
+    results = wp_request(f"posts?search={urllib.parse.quote(title)}&per_page=10&status=any")
     if isinstance(results, list):
         for post in results:
             if post["title"]["rendered"].lower() == title.lower():
@@ -276,7 +334,7 @@ def find_existing_post(title):
 
 
 def write_wp_id(note_path, post_id):
-    """Write the WordPress post ID back into the note's frontmatter."""
+    """Write the WordPress post ID into the note's frontmatter."""
     with open(note_path, "r", encoding="utf-8") as f:
         raw = f.read()
     if raw.startswith("---"):
@@ -289,19 +347,15 @@ def update_status_in_frontmatter(note_path, status):
     """Update or insert the status field in the note's frontmatter."""
     with open(note_path, "r", encoding="utf-8") as f:
         raw = f.read()
-
     if raw.startswith("---"):
         end = raw.find("---", 3)
         if end != -1:
             fm_block = raw[3:end]
             if "status:" in fm_block:
-                # Replace existing status line
                 fm_block = re.sub(r'status:.*', f'status: {status}', fm_block)
             else:
-                # Insert status before closing ---
                 fm_block = fm_block.rstrip() + f'\nstatus: {status}\n'
             raw = "---" + fm_block + raw[end:]
-
     with open(note_path, "w", encoding="utf-8") as f:
         f.write(raw)
 
@@ -317,8 +371,12 @@ def build_post_data(note_path, status):
     category_name = frontmatter.get("category", "").strip()
     excerpt       = frontmatter.get("excerpt", "").strip()
 
-    # Strip Obsidian comments (%% ... %%) — both inline and multi-line
+    # Strip Obsidian comments
     body = re.sub(r'%%.*?%%', '', body, flags=re.DOTALL).strip()
+
+    # Handle images and video embeds
+    vault_root = os.path.dirname(os.path.dirname(note_path))
+    body = process_media(body, vault_root)
 
     html_content = markdown_to_html(body)
 
@@ -349,41 +407,33 @@ def run(note_path, draft_mode=False):
     status = "draft" if draft_mode else "publish"
     post_data, frontmatter, title = build_post_data(note_path, status)
 
+    prev_status = frontmatter.get("status", "").strip().lower()
     wp_id = frontmatter.get("wp-id", "").strip()
 
     if wp_id:
-        # Post already exists — update it with new status
         result = wp_request(f"posts/{wp_id}", post_data, method="POST")
         if isinstance(result, list):
             result = result[0]
         if draft_mode:
-            notify("WordPress Publisher", f"Reverted to draft: {title}")
+            msg = f"Taken down to draft: {title}" if prev_status == "publish" else f"Draft updated: {title}"
         else:
-            notify("WordPress Publisher", f"Updated: {title}")
+            msg = f"Published from draft: {title}" if prev_status == "draft" else f"Post updated: {title}"
+        notify("WordPress Publisher", msg)
     else:
-        # New post — check by title as fallback, then create
         existing_id = find_existing_post(title)
         if existing_id:
             result = wp_request(f"posts/{existing_id}", post_data, method="POST")
             if isinstance(result, list):
                 result = result[0]
-            if draft_mode:
-                notify("WordPress Publisher", f"Reverted to draft: {title}")
-            else:
-                notify("WordPress Publisher", f"Updated: {title}")
+            msg = f"Taken down to draft: {title}" if draft_mode else f"Post updated: {title}"
         else:
             result = wp_request("posts", post_data, method="POST")
             if isinstance(result, list):
                 result = result[0]
-            if draft_mode:
-                notify("WordPress Publisher", f"Saved as draft: {title}")
-            else:
-                notify("WordPress Publisher", f"Published: {title}")
-
-        # Write wp-id back to frontmatter for future runs
+            msg = f"Saved as new draft: {title}" if draft_mode else f"Published: {title}"
         write_wp_id(note_path, result["id"])
+        notify("WordPress Publisher", msg)
 
-    # Always update status field in frontmatter
     update_status_in_frontmatter(note_path, status)
 
 
@@ -397,7 +447,6 @@ if __name__ == "__main__":
 
         path       = sys.argv[1]
         draft_mode = "--draft" in sys.argv
-
         run(path, draft_mode=draft_mode)
 
     except Exception as e:
