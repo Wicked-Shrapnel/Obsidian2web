@@ -51,7 +51,7 @@ import traceback
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 # ── CONFIG ─────────────────────────────────────────────────────────────────────
-# Your WordPress site URL — no trailing slash
+# Your WordPress site URL — https:// no trailing slash
 WP_URL          = ""
 
 # Your WordPress login username
