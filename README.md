@@ -4,7 +4,29 @@
 Full disclosure this was made with the assistance of claude.
 
 This tool lets you write notes in Obsidian and publish them to your WordPress site with a single hotkey press. It converts your Markdown to HTML, assigns the category, and sends it to WordPress via the REST API. A second hotkey lets you save a post as a draft or revert a live post back to draft. If you run the publish hotkey again on the same note it updates the existing post rather than duplicating it.
+I was inspired by this video from Network Chuck. This is a simplified version of his idea but the principle is still the same.
+https://www.youtube.com/watch?v=dnE7c0ELEH8
 
+I wanted a way to publish and draft website post from obsidian. I was sick of using the Gutenberg editor since for whatever reason it made it impossible to just get my ideas down on paper.  My speech to text software was also constantly messing up when I used it in the web browser and for whatever reason works perfectly inside obsidian so there's that lol.
+
+There are 2 versions of the script. The test version has some basic logs functionality. It maintains the core functionality of the project but may have some small differences from the main project. If you use it make sure to remove the_test from the file name. I abandoned it because as useful as logs are there are only a handful problems you can run into with this project and I think I figured them all out. I may add them in the future but trying to implement them to have the features that I wanted broke the project.
+
+## Potential issues
+- Wrong filename
+- Improperly configured shell command
+- The note not being in the correct folder
+- Invalid or missing credentials
+- Wrong site URL
+- Site being down/no network connection
+- Removing or changing the wp-id
+
+
+---
+## Future features
+
+- Add an error status. As of right now even if the script fails the status will change can be a little confusing. I want out of feature that ensures that if an error occurs the status set to Error and not draft or published.
+- Proper logs with the log file stored in the vault itself.
+- Linux version but not until I get improper text-to-speech software working on my laptop.
 ---
 
 ## Components
@@ -24,7 +46,7 @@ This tool lets you write notes in Obsidian and publish them to your WordPress si
 
 If your Obsidian vault is stored on a NAS or SMB shere, you must map it as a Windows drive letter before using this tool. Windows CMD does not support UNC paths (\Server\Share) and Obsidian may pass these to the script.
 
-Note: NAS/network drives have the exact same set up so be using them no changeable
+Note: NAS/network drives have the exact same set up so I will be using them Interchangeably.
 
 **To map your Network share:**
 
@@ -84,6 +106,7 @@ Save the script somewhere permanent, e.g. C:\Scripts\
 1. Open Obsidian -> Settings -> Community Plugins -> Browse
 2. Search for Shell Commands and install it
 3. Toggle it on
+**Repeat this same steps to install Templater.** 
 
 ---
 
@@ -129,21 +152,19 @@ Add two shell commands — one to publish, one to draft.
 
 ## Step 6 — Bind hotkeys
 
-Bind a hotkey to each command:
-
 1. In Shell Commands settings, click the hotkey icon next to Publish to WordPress
 2. Press your desired combo (e.g. Ctrl+Shift+P)
 3. Click the hotkey icon next to Save as Draft
 4. Press a different combo (e.g. Ctrl+Shift+D)
 
-You can set these key anything you would like also, you can trigger them by name if you prefer.
+You can set these keys anything you would like also, you can trigger them by name if you prefer.
 
 ---
 
 ## Step 7 — Set the working directory (Skip if using a local drive)
 
 1. In Shell Commands settings, click the Environments tab
-2. Set the Working directory to your vault's root folder path
+2. Set the working directory to your vault's root folder path
 
 This ensures the script can find your files when triggered via hotkey.
 
@@ -151,10 +172,11 @@ This ensures the script can find your files when triggered via hotkey.
 
 ## Step 8 — Set up the template (Optional)
 
-1. Place Site Post.md in your Obsidian Templates folder
-2. Open Settings -> Templater
-3. Enable Trigger Templater on new file creation
-4. Under Folder Templates, add an entry:
+1. 
+2. Place Site Post.md in your Obsidian Templates folder
+3. Open Settings -> Templater
+4. Enable Trigger Templater on new file creation
+5. Under Folder Templates, add an entry:
     - Folder: your site posts folder
     - Template: Site Post
 
@@ -206,14 +228,13 @@ Use it freely for reminders, drafting notes, or anything you want to keep out of
 
 ## Template fields
 
-|Field|What it does|
-|---|---|
-|`category`|WordPress category. Auto-created if it doesn't exist yet.|
-|`excerpt`|Short summary shown on post listing pages (optional).|
-|`status`|Updated automatically to publish or draft after each run.|
-|`wp-id`|Added automatically after first publish. Do not delete.|
-
-The post title comes from the note filename — no need to set it manually.
+| Field      | What it does                                              |
+| ---------- | --------------------------------------------------------- |
+| `category` | WordPress category. Auto-created if it doesn't exist yet. |
+| `excerpt`  | Short summary shown on post listing pages (optional).     |
+| `status`   | Updated automatically to publish or draft after each run. |
+| `wp-id`    | Added automatically after first publish. Do not delete.   |
+Note: If the category section as bank it will be marked as uncategorized
 
 ---
 
@@ -233,6 +254,10 @@ The draft hotkey has two behaviours depending on the state of the note:
 The publish hotkey works the same way in reverse — pressing it on a draft note makes it live. The `status:` field in your frontmatter always reflects the current state so you can see at a glance whether a note is live or in draft.
 
 ---
+## Formatting
+To embed videos obsidian requires the following syntax but if the link is just![](Link) If the link is pasted plainly in the note and is pushed to the site it will be embedded in the with post but the note not show the video as embedded. This was a choice I made for consistency sake so that the note looks as close to the site post this possible. The script can handle both options.
+
+Images are taken from the vault and uploaded as well. The program will upload duplicates in the future I plan to fix this issue.
 
 ## Troubleshooting
 
@@ -252,4 +277,4 @@ The publish hotkey works the same way in reverse — pressing it on a draft note
 python "C:\path\to\publish_to_wp.py" "{{file_path:absolute}}" --draft
 ```
 
-**Script fails with a connection error** Check that you have an active internet connection and that your WordPress site is reachable in a browser.
+**Script fails with a connection error** Check that you have an active internet connection and that your WordPress site is reachable in a browser. 
