@@ -52,14 +52,14 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='repla
 
 # ── CONFIG ─────────────────────────────────────────────────────────────────────
 # Your WordPress site URL — no trailing slash
-WP_URL          = "https://bradwheels.tech"
+WP_URL          = ""
 
 # Your WordPress login username
-WP_USERNAME     = "wheels"
+WP_USERNAME     = ""
 
 # Application Password — generate one at:
 # WordPress Dashboard -> Users -> Profile -> Application Passwords
-WP_APP_PASSWORD = "6UkC I6ey HIYy fxeP V6bn Dqb8"
+WP_APP_PASSWORD = ""
 # ───────────────────────────────────────────────────────────────────────────────
 
 def notify(title, message):
