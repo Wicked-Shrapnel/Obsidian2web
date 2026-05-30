@@ -70,7 +70,7 @@ class Tee(io.TextIOWrapper):
 sys.stdout = Tee(sys.stdout.buffer, LOG_PATH)
 
 # ── CONFIG ─────────────────────────────────────────────────────────────────────
-# Your WordPress site URL — no trailing slash
+# Your WordPress site URL — https:// no trailing slash
 WP_URL          = "Website"
 
 # Your WordPress login username
