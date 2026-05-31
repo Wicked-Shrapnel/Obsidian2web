@@ -9,7 +9,10 @@ https://www.youtube.com/watch?v=dnE7c0ELEH8
 
 I wanted a way to publish and draft website post from obsidian. I was sick of using the Gutenberg editor since for whatever reason it made it impossible to just get my ideas down on paper.  My speech to text software was also constantly messing up when I used it in the web browser and for whatever reason works perfectly inside obsidian so there's that lol.
 
-There are 2 versions of the script. The test version has some basic logs functionality. It maintains the core functionality of the project but may have some small differences from the main project. If you use it make sure to remove the_test from the file name. I abandoned it because as useful as logs are there are only a handful problems you can run into with this project and I think I figured them all out. I may add them in the future but trying to implement them to have the features that I wanted broke the project.
+There are 2 versions of the script. The test version has some basic log functionality. It maintains the core functionality of the project but may have some small differences from the main project. If you use it make sure to remove the_test from the file name. I abandoned it because as useful as logs are there are only a handful of problems you can run into with this project and I think I figured them all out. I may add them in the future but trying to implement them to have the features that I wanted broke the project.
+
+
+If you end up using the project drop me a comment and let me know you think. Https://bradwheels.tech
 
 ## Potential issues
 - Wrong filename
@@ -19,7 +22,7 @@ There are 2 versions of the script. The test version has some basic logs functio
 - Wrong site URL
 - Site being down/no network connection
 - Removing or changing the wp-id
-
+  
 
 ---
 ## Future features
