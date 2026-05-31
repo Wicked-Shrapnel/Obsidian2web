@@ -27,6 +27,7 @@ There are 2 versions of the script. The test version has some basic logs functio
 - Add an error status. As of right now even if the script fails the status will change can be a little confusing. I want out of feature that ensures that if an error occurs the status set to Error and not draft or published.
 - Proper logs with the log file stored in the vault itself.
 - Linux version but not until I get improper text-to-speech software working on my laptop.
+- Ability to enable/disable comments
 ---
 
 ## Components
