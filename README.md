@@ -46,26 +46,6 @@ If you end up using the project drop me a comment and let me know you think. Htt
 
 ---
 
-## NAS / Network Drive Note
-
-If your Obsidian vault is stored on a NAS or SMB shere, you must map it as a Windows drive letter before using this tool. Windows CMD does not support UNC paths (\Server\Share) and Obsidian may pass these to the script.
-
-Note: NAS/network drives have the exact same set up so I will be using them Interchangeably.
-
-**To map your Network share:**
-
-1. Open File Explorer -> This PC -> three dots (...) -> Map network drive
-2. Choose a drive letter (e.g. Z:)
-3. Enter your network drive path
-4. Check Reconnect at sign-in
-5. Click Finish
-
-Then open Obsidian and make sure your vault is opened via the mapped drive letter and not the UNC path. If the NAS is offline at boot, the mapping may not connect automatically and the hotkey will fail until the NAS is back online.
-
-==**If your vault is on your local C: drive, ignore this section entirely.**==
-
----
-
 ## Step 1 — Enable Application Passwords in WordPress
 
 Some hosts disable this feature by default. If you don't see Application Passwords in your WordPress profile, add this line to wp-config.php. Note there might be some slight variation between the naming of this folder based on your web host.
